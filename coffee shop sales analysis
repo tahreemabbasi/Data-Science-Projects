@@ -1,0 +1,78 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+df = pd.read_csv('/content/Project.csv')
+
+print(df.isnull().sum())
+df['unit_price'] = df['unit_price'].fillna(df['unit_price'].mean())
+df['product_category'] = df['product_category'].fillna(df['product_category'].mode()[0])
+
+df = df.drop_duplicates()
+Q1 = df['unit_price'].quantile(0.25)
+Q3 = df['unit_price'].quantile(0.75)
+IQR = Q3 - Q1
+df = df[~((df['unit_price'] < (Q1 - 1.5 * IQR)) | (df['unit_price'] > (Q3 + 1.5 * IQR)))]
+profit_margin_percentage = 0.20  
+df['Estimated_COGS'] = df['unit_price'] * df['transaction_qty'] * (1 - profit_margin_percentage)
+df['Gross Profit'] = df['Total_Bill'] - df['Estimated_COGS']
+df['Profit Margin'] = (df['Gross Profit'] / df['Total_Bill']) * 100
+
+profitable_products = df[df['Gross Profit'] > 0]
+loss_products = df[df['Gross Profit'] <= 0]
+
+plt.figure(figsize=(10,6))
+sns.barplot(data=df, x='product_category', y='Gross Profit', palette='coolwarm')
+plt.title('Product Profitability Analysis')
+plt.xticks(rotation=0)
+plt.show()
+
+profit_pivot = df.pivot_table(values='Gross Profit', index='product_category', columns='product_type')
+sns.heatmap(profit_pivot, cmap='coolwarm', annot=True)
+plt.xticks(rotation=90)
+plt.yticks(rotation=0)
+plt.title('Heatmap of Product Profitability')
+plt.show()
+
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, r2_score
+
+df.dropna(inplace=True)
+
+X = df[['Total_Bill', 'Estimated_COGS']]
+y = df['Gross Profit']
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+model = LinearRegression()
+model.fit(X_train, y_train)
+
+y_pred = model.predict(X_test)
+
+mse = mean_squared_error(y_test, y_pred)
+r2 = r2_score(y_test, y_pred)
+
+print(f'Mean Squared Error: {mse}')
+print(f'R-Squared: {r2}')
+
+future_predictions = model.predict(X_test) 
+print(f"Future Profit Predictions: {future_predictions}")
+df['Gross Profit'] = df['Total_Bill'] - df['Estimated_COGS']
+loss_df = df[df['Gross Profit'] <= 1]
+
+loss_analysis = loss_df.groupby('product_category').agg({
+    'Estimated_COGS': 'mean',
+    'Total_Bill': 'mean',
+    'Gross Profit': 'mean'
+}).sort_values(by='Gross Profit', ascending=True)
+
+print(loss_analysis)
+
+plt.figure(figsize=(10,6))
+sns.barplot(data=loss_df, x='product_category', y='Gross Profit', palette='Reds')
+plt.title('Loss-Incurring Products')
+plt.xticks(rotation=90)
+plt.show()
+
